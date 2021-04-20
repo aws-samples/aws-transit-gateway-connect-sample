@@ -23,7 +23,7 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 ## Deployment Consumer VPCs
 1. VPC needs to be attached to TGW
 2. Consumer subnets need a default route (`0.0.0.0/0`) towards TGW
-3. VPC attachment has to associated with GRE main route table
+3. VPC attachment has to be associated with GRE main route table
 4. Routing from TGW towards consumer VPC has to be in place within GRE main route table 
 
 ## Architecture
