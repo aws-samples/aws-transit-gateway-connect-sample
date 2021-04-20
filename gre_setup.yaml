@@ -1,0 +1,822 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Transit Gateway Connect Setup
+
+# Sample network setup
+#
+# tgw cidr 10.10.0.0/24
+#
+# gre-pub1
+# tgw-ip 10.10.0.1
+# peer-ip 10.192.10.10
+# bgp inner 169.254.7.0/29
+# peer asn 64513
+
+# gre-pub2
+# tgw-ip 10.10.0.2
+# peer-ip 10.192.11.10
+# bgp inner 169.254.8.0/29
+# peer asn 64514
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: 'Deployment Identifiers'
+      Parameters:
+      - pOrg
+      - pSystem
+      - pApp
+      - pEnvPurpose
+    - Label:
+        default: 'Target VPC Configuration'
+      Parameters:
+      - pVpcId
+      - pSubnetIdA
+      - pSubnetIdB
+      - pVpcCidr
+    - Label:
+        default: 'Transit Gateway Connect Configuration'
+      Parameters:
+      - pTgwCidr
+      - pTgwASN
+      - pGreCidr1
+      - pGreCidr2
+      - pGw1ASN
+      - pGw2ASN
+      - pTgwRouteTableId
+      - pTgwAttachmentId
+    - Label:
+        default: 'GRE Tunnel Appliances Configuration'
+      Parameters:
+      - pInstanceType
+      - pAmiId
+      - pGwKeypair
+    ParameterLabels:
+      pTgwCidr:
+        default: CIDR already assigned to your Transit Gateway
+      pTgwASN:
+        default: ASN assigned to Transit Gateway
+      pGw1ASN:
+        default: GRE Tunnel Appliance 1 ASN (must be different from TGW ASN)
+      pGw2ASN:
+        default: GRE Tunnel Appliance 2 ASN (must be different from TGW ASN)
+      pTgwRouteTableId:
+        default: Transit Gateway Route Table ID for central SDWAN routing
+      pTgwAttachmentId:
+        default: Transport VPC Transit Gateway Attachment to create TGW Connect Attachment
+      pGwKeypair:
+        default: Specify EC2 Keypair name to be attached for direct SSH access to the appliances
+
+
+Parameters:
+  pOrg:
+    Type: String
+    Description: Used to qualify resource names
+    Default: example
+  pSystem:
+    Type: String
+    Description: Used to qualify resource names
+    Default: infra
+  pApp:
+    Type: String
+    Description: Used to qualify resource names
+    Default: gregw
+  pEnvPurpose:
+    Type: String
+    Description: Used to qualify resource names. 10 characters max.
+    AllowedPattern: '^[a-zA-Z0-9-_]{1,10}$'
+    Default: test
+  pGwKeypair:
+    Type: String
+    Default: ""
+  pVpcId:
+    Description: VPC ID
+    Type: AWS::EC2::VPC::Id
+  pVpcCidr:
+    Description: VPC CIDR Block
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    Default: 10.192.10.0/16
+  pGreCidr1:
+    Description: GRE inside CIDR Block Gateway 1
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-9]))$
+    Default: 169.254.7.0/29
+  pGreCidr2:
+    Description: GRE inside CIDR Block Gateway 2
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-9]))$
+    Default: 169.254.8.0/29
+  pTgwCidr:
+    Description: TGW CIDR Block
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
+    Default: 10.10.0.0/24
+  pTgwRouteTableId:
+    Type: String
+  pTgwAttachmentId:
+    Type: String
+  pSubnetIdA:
+    Description: Subnet ID for GRE Gateway 1
+    Type: AWS::EC2::Subnet::Id
+  pSubnetIdB:
+    Description: Subnet ID for GRE Gateway 2
+    Type: AWS::EC2::Subnet::Id
+  pInstanceType:
+    Description: EC2 Instance Type
+    Type: String
+    Default: t3a.micro
+    AllowedValues:
+    - t3a.micro
+    - t3a.small
+    - t3a.medium
+    ConstraintDescription: must be a valid EC2 instance type.
+  pAmiId:
+    Description: EC2 Appliance AMI ID
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-ebs'
+  pTgwASN:
+    Type: Number
+    Default: 64512
+  pGw1ASN:
+    Type: Number
+    Default: 64513
+  pGw2ASN:
+    Type: Number
+    Default: 64514
+
+Conditions:
+  AttachKeypair: !Not [!Equals [!Ref pGwKeypair, ""]]
+Resources:
+  rInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${pSystem}-${pApp}-ec2-${pEnvPurpose}-${AWS::StackName}'
+      VpcId: !Ref pVpcId
+      GroupDescription: Allow traffic from other VPN gateway and all locally sourced traffic
+      SecurityGroupIngress:
+      - IpProtocol: '-1'
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: !Ref pVpcCidr
+      - IpProtocol: '-1'
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: !Ref pTgwCidr
+      - IpProtocol: '6'
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+  rLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties: 
+      LaunchTemplateName: !Sub '${pSystem}-${pApp}-${pEnvPurpose}'
+      LaunchTemplateData:
+        KeyName: !If [AttachKeypair, !Ref pGwKeypair, !Ref AWS::NoValue]
+        InstanceType: !Ref pInstanceType
+        ImageId: !Ref pAmiId
+        IamInstanceProfile: 
+          Arn: !GetAtt rGreGatewayInstanceProfile.Arn
+        NetworkInterfaces:
+        - DeviceIndex: 0
+          DeleteOnTermination: true
+          Description: !Sub '${pSystem}-${pApp}-${pEnvPurpose}'
+          Groups:
+          - !Ref rInstanceSecurityGroup
+          AssociatePublicIpAddress: true
+    Metadata:
+      AWS::CloudFormation::Authentication:
+        S3BucketAccessCredential:
+          type: "S3"
+          roleName: !Ref rGreGatewayRole
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+          - 01-config-cloudwatch-agent
+          - 02-restart-cloudwatch-agent
+          - 03-install-epel
+          - 04-config-gre-gateway-config
+          - 05-config-bgp-commands
+        01-config-cloudwatch-agent:
+          files:
+            /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json:
+              content: !Sub |
+                {
+                  "metrics": {
+                    "metrics_collected": {
+                      "cpu": {
+                        "resources": [
+                          "*"
+                        ],
+                        "measurement": [
+                          "usage_idle",
+                          "usage_nice",
+                          "usage_guest"
+                        ],
+                        "totalcpu": false,
+                        "metrics_collection_interval": 10
+                      },
+                      "mem": {
+                        "measurement": [
+                          "total",
+                          "used",
+                          "used_percent"
+                        ]
+                      },
+                      "swap": {
+                        "measurement": [
+                          "free",
+                          "used",
+                          "used_percent"
+                        ]
+                      },
+                      "netstat": {
+                        "measurement": [
+                          "tcp_established",
+                          "tcp_syn_sent",
+                          "tcp_close"
+                        ],
+                        "metrics_collection_interval": 60
+                      },
+                      "disk": {
+                        "measurement": [
+                          "total",
+                          "free",
+                          "used",
+                          "used_percent"
+                        ],
+                        "resources": [
+                          "*"
+                        ],
+                        "drop_device": true
+                      },  
+                      "processes": {
+                        "measurement": [
+                          "running",
+                          "sleeping",
+                          "dead"
+                        ]
+                      }
+                    },
+                    "append_dimensions": {
+                      "ImageId": "${!aws:ImageId}",
+                      "InstanceId": "${!aws:InstanceId}",
+                      "InstanceType": "${!aws:InstanceType}"
+                    },
+                    "aggregation_dimensions" : [["InstanceId", "InstanceType"],[]]
+                  },
+                  "logs": {
+                    "logs_collected": {
+                      "files": {
+                        "collect_list": [
+                          {
+                            "file_path": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                            "log_group_name": "amazon-cloudwatch-agent.log",
+                            "log_stream_name": "amazon-cloudwatch-agent.log",
+                            "timezone": "UTC"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init.log",
+                            "log_group_name": "${rCloudWatchLogsAgentGroup}",
+                            "log_stream_name": "{instance_id}/cloud-init.log",
+                            "timezone": "UTC"
+                          },
+                          {
+                            "file_path": "/var/log/cloud-init-output.log",
+                            "log_group_name": "${rCloudWatchLogsAgentGroup}",
+                            "log_stream_name": "{instance_id}/cloud-init-output.log",
+                            "timezone": "UTC"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-init.log",
+                            "log_group_name": "${rCloudWatchLogsAgentGroup}",
+                            "log_stream_name": "{instance_id}/cfn-init.log",
+                            "timezone": "UTC"
+                          },
+                          {
+                            "file_path": "/var/log/cfn-wire.log",
+                            "log_group_name": "${rCloudWatchLogsAgentGroup}",
+                            "log_stream_name": "{instance_id}/cfn-wire.log",
+                            "timezone": "UTC"
+                          },
+                          {
+                            "file_path": "/var/log/quagga/zebra.log",
+                            "log_group_name": "${rCloudWatchLogsAgentGroup}",
+                            "log_stream_name": "{instance_id}/zebra.log",
+                            "timezone": "UTC"
+                          },
+                          {
+                            "file_path": "/var/log/quagga/bgpd.log",
+                            "log_group_name": "${rCloudWatchLogsAgentGroup}",
+                            "log_stream_name": "{instance_id}/bgpd.log",
+                            "timezone": "UTC"
+                          }
+                        ]
+                      }
+                    },
+                    "log_stream_name": "${rCloudWatchLogsAgentGroup}",
+                    "force_flush_interval" : 15
+                  }
+                }
+              mode: '000444'
+              owner: root
+              group: root
+        02-restart-cloudwatch-agent:
+          commands:
+            01-stop-service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+            02-start-service:
+              command: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+        03-install-epel:
+          commands:
+            01-install-epel:
+              command: amazon-linux-extras install epel -y
+        04-config-gre-gateway-config:
+          packages:
+            yum:
+              iptables-services: []
+              ntp: []
+              quagga: []
+              jq: []
+          files:
+            /etc/sysconfig/network-scripts/ifcfg-gre1:
+              content: |
+                DEVICE=gre1
+                BOOTPROTO=none
+                ONBOOT=yes
+                TYPE=GRE
+                PEER_OUTER_IPADDR={TGW_PEER_IP}
+                #PEER_INNER_IPADDR=
+                MY_INNER_IPADDR={GRE_GW_PEER_IP}/29
+                MY_OUTER_IPADDR={PRIVATE_IP}
+            /etc/quagga/zebra.conf:
+              content: |
+                hostname {HOSTNAME}
+                password zebra
+                enable password zebra
+                !
+                log file /var/log/quagga/zebra.log
+                !
+                ! Configure interfaces
+                interface lo
+                ! Change preferred source ip address of received routes
+                route-map RM_SET_SRC permit 10
+                  set src {PRIVATE_IP}
+                ip protocol bgp route-map RM_SET_SRC
+                !
+                line vty
+              mode: '000600'
+              owner: quagga
+              group: quagga
+            /etc/quagga/bgpd.conf:
+              content: !Sub |
+                hostname bgpd
+                password zebra
+                enable password zebra
+                !
+                log file /var/log/quagga/bgpd.log
+                !
+                debug bgp events
+                debug bgp filters
+                debug bgp fsm
+                debug bgp keepalives
+                debug bgp updates
+                !
+                router bgp {GRE_GW_ASN}
+                 network 0.0.0.0 mask 0.0.0.0
+                 neighbor {GRE_PEER_IP_1} remote-as ${pTgwASN}
+                 neighbor {GRE_PEER_IP_1} ebgp-multihop 2
+                 neighbor {GRE_PEER_IP_2} remote-as ${pTgwASN}
+                 neighbor {GRE_PEER_IP_2} ebgp-multihop 2
+                !
+                line vty
+              mode: '000600'
+              owner: quagga
+              group: quagga
+            /etc/sysctl.conf:
+              content: |
+                # sysctl settings are defined through files in
+                # /usr/lib/sysctl.d/, /run/sysctl.d/, and /etc/sysctl.d/.
+                #
+                # Vendors settings live in /usr/lib/sysctl.d/.
+                # To override a whole file, create a new file with the same in
+                # /etc/sysctl.d/ and put new settings there. To override
+                # only specific settings, add a file with a lexically later
+                # name in /etc/sysctl.d/ and put new settings there.
+                #
+                # For more information, see sysctl.conf(5) and sysctl.d(5).
+                
+                net.ipv4.ip_forward = 1
+              mode: '000600'
+              owner: root
+              group: root
+        05-config-bgp-commands:
+          commands:
+            00-sed-instance-specific-settings:
+              command: >-
+                source /etc/profile.d/gre_gateway.sh &&
+                ipaddr=$(curl 169.254.169.254/latest/meta-data/local-ipv4) &&
+                sed -i -e "s/{PRIVATE_IP}/${ipaddr}/" /etc/quagga/zebra.conf && 
+                sed -i -e "s/{GRE_GW_ASN}/${GRE_GW_ASN}/" /etc/quagga/bgpd.conf &&
+                sed -i -e "s/{GRE_PEER_IP_1}/${GRE_PEER_IP_1}/g" /etc/quagga/bgpd.conf &&
+                sed -i -e "s/{GRE_PEER_IP_2}/${GRE_PEER_IP_2}/g" /etc/quagga/bgpd.conf &&
+                hostname=$(curl 169.254.169.254/latest/meta-data/local-hostname) &&
+                sed -i -e "s/{HOSTNAME}/${hostname}/" /etc/quagga/zebra.conf &&
+                sed -i -e "s/{TGW_PEER_IP}/${TGW_PEER_IP}/" /etc/sysconfig/network-scripts/ifcfg-gre1 &&
+                sed -i -e "s/{GRE_GW_PEER_IP}/${GRE_GW_PEER_IP}/" /etc/sysconfig/network-scripts/ifcfg-gre1 &&
+                sed -i -e "s/{PRIVATE_IP}/${ipaddr}/" /etc/sysconfig/network-scripts/ifcfg-gre1
+            01-load-sysctl-changes:
+              command: sysctl -p /etc/sysctl.conf
+            02-enable-ip-forwarding:
+              command: >- 
+                sysctl -w net.ipv4.ip_forward=1 && 
+                sysctl -w net.ipv4.conf.eth0.disable_xfrm=1 && 
+                sysctl -w net.ipv4.conf.eth0.disable_policy=1
+            03-create-gre-tunnel:
+              command: >-
+                source /etc/profile.d/gre_gateway.sh &&
+                ipaddr=$(curl 169.254.169.254/latest/meta-data/local-ipv4) &&
+                ip tunnel add gre1 mode gre remote ${TGW_PEER_IP} local ${ipaddr} ttl 255 &&
+                ip addr add ${GRE_GW_PEER_IP}/29 dev gre1 &&
+                ip link set gre1 up
+            04-setup-iptables-mask:
+              command: >-
+                ipaddr=$(curl 169.254.169.254/latest/meta-data/local-ipv4) &&
+                iptables -F; iptables -t nat -F; iptables -t mangle -F &&
+                iptables -t nat -A POSTROUTING -o eth0 -j SNAT --to ${ipaddr} &&
+                iptables-save > /etc/sysconfig/iptables
+            05-enable-start-ntpd:
+              command: >- 
+                systemctl enable ntpd && 
+                systemctl start  ntpd
+            06-enable-start-zebra:
+              command: >- 
+                systemctl enable zebra && 
+                systemctl start  zebra
+            07-enable-start-bgpd:
+              command: >- 
+                systemctl enable bgpd && 
+                systemctl start  bgpd
+            08-enable-start-iptables:
+              command: >-
+                systemctl enable iptables &&
+                systemctl start  iptables
+
+  rGreGateway1:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId:
+          Ref: rLaunchTemplate
+        Version:
+          Fn::GetAtt:
+            [ rLaunchTemplate, LatestVersionNumber ]
+      NetworkInterfaces:
+      - DeviceIndex: '0'
+        SubnetId: !Ref pSubnetIdA
+      SourceDestCheck: true
+      UserData:
+        Fn::Base64: !Sub
+        - |
+          #!/bin/bash -xe
+
+          yum install -y amazon-cloudwatch-agent
+
+          echo 'TEST_ECHO="testvar"' > /etc/profile.d/gre_gateway.sh
+          echo 'TGW_PEER_IP="${TgwPeerIp}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_GW_ASN="${pGw1ASN}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_GW_PEER_IP="${GreGwPeerIp}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_PEER_IP_1="${GrePeerIp1}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_PEER_IP_2="${GrePeerIp2}"' >> /etc/profile.d/gre_gateway.sh
+
+          source /etc/profile.d/gre_gateway.sh
+          echo $TEST_ECHO
+
+          /opt/aws/bin/cfn-init \
+              --verbose \
+              --stack ${AWS::StackName} \
+              --resource rLaunchTemplate \
+              --configsets default \
+              --region ${AWS::Region}
+
+          echo "${!TEST_ECHO}"
+          /opt/aws/bin/cfn-signal \
+              --exit-code $? \
+              '${rGreGatewayWaitHandle1}'
+        - GreGwPeerIp: !Sub
+          - ${Prefix}.1
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pGreCidr1 ] ]
+              - !Select [ 1, !Split [ ".", !Ref pGreCidr1 ] ]
+              - !Select [ 2, !Split [ ".", !Ref pGreCidr1 ] ]
+          TgwPeerIp: !Sub
+          - ${Prefix}.1
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pTgwCidr ] ]
+              - !Select [ 1, !Split [ ".", !Ref pTgwCidr ] ]
+              - !Select [ 2, !Split [ ".", !Ref pTgwCidr ] ]
+          GrePeerIp1: !Sub
+          - ${Prefix}.2
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pGreCidr1 ] ]
+              - !Select [ 1, !Split [ ".", !Ref pGreCidr1 ] ]
+              - !Select [ 2, !Split [ ".", !Ref pGreCidr1 ] ]
+          GrePeerIp2: !Sub
+          - ${Prefix}.3
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pGreCidr1 ] ]
+              - !Select [ 1, !Split [ ".", !Ref pGreCidr1 ] ]
+              - !Select [ 2, !Split [ ".", !Ref pGreCidr1 ] ]
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pApp}-${pEnvPurpose}-1'
+  rGreGateway2:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId:
+          Ref: rLaunchTemplate
+        Version:
+          Fn::GetAtt:
+            [ rLaunchTemplate, LatestVersionNumber ]
+      NetworkInterfaces:
+      - DeviceIndex: '0'
+        SubnetId: !Ref pSubnetIdB
+      SourceDestCheck: true
+      UserData:
+        Fn::Base64: !Sub
+        - |
+          #!/bin/bash -xe
+
+          yum install -y amazon-cloudwatch-agent
+
+          echo 'TEST_ECHO="testvar"' > /etc/profile.d/gre_gateway.sh
+          echo 'TGW_PEER_IP="${TgwPeerIp}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_GW_ASN="${pGw2ASN}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_GW_PEER_IP="${GreGwPeerIp}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_PEER_IP_1="${GrePeerIp1}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'GRE_PEER_IP_2="${GrePeerIp2}"' >> /etc/profile.d/gre_gateway.sh
+
+          source /etc/profile.d/gre_gateway.sh
+          echo $TEST_ECHO
+
+          /opt/aws/bin/cfn-init \
+              --verbose \
+              --stack ${AWS::StackName} \
+              --resource rLaunchTemplate \
+              --configsets default \
+              --region ${AWS::Region}
+
+          echo "${!TEST_ECHO}"
+          /opt/aws/bin/cfn-signal \
+              --exit-code $? \
+              '${rGreGatewayWaitHandle2}'
+        - GreGwPeerIp: !Sub
+          - ${Prefix}.1
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pGreCidr2 ] ]
+              - !Select [ 1, !Split [ ".", !Ref pGreCidr2 ] ]
+              - !Select [ 2, !Split [ ".", !Ref pGreCidr2 ] ]
+          TgwPeerIp: !Sub
+          - ${Prefix}.2
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pTgwCidr ] ]
+              - !Select [ 1, !Split [ ".", !Ref pTgwCidr ] ]
+              - !Select [ 2, !Split [ ".", !Ref pTgwCidr ] ]
+          GrePeerIp1: !Sub
+          - ${Prefix}.2
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pGreCidr2 ] ]
+              - !Select [ 1, !Split [ ".", !Ref pGreCidr2 ] ]
+              - !Select [ 2, !Split [ ".", !Ref pGreCidr2 ] ]
+          GrePeerIp2: !Sub
+          - ${Prefix}.3
+          - Prefix: !Join
+            - '.'
+            - - !Select [ 0, !Split [ ".", !Ref pGreCidr2 ] ]
+              - !Select [ 1, !Split [ ".", !Ref pGreCidr2 ] ]
+              - !Select [ 2, !Split [ ".", !Ref pGreCidr2 ] ]
+      Tags:
+      - Key: Name
+        Value: !Sub '${pSystem}-${pApp}-${pEnvPurpose}-2'
+
+  rGreGatewayWaitHandle1:
+   Type: AWS::CloudFormation::WaitConditionHandle
+
+  rGreGatewayWaitCondition1:
+    Type: AWS::CloudFormation::WaitCondition
+    DependsOn:
+    - rGreGateway1
+    Properties:
+      Handle:
+        Ref: rGreGatewayWaitHandle1
+      Timeout: '3000'
+      Count: 1
+
+  rGreGatewayWaitHandle2:
+    Type: AWS::CloudFormation::WaitConditionHandle
+
+  rGreGatewayWaitCondition2:
+    Type: AWS::CloudFormation::WaitCondition
+    DependsOn:
+    - rGreGateway2
+    Properties:
+      Handle:
+        Ref: rGreGatewayWaitHandle2
+      Timeout: '3000'
+      Count: 1
+
+  rGreGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: !Sub '/${pOrg}/${pSystem}/${pApp}/'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+  rGreGatewayInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: !Sub '/${pOrg}/${pSystem}/${pApp}/'
+      Roles:
+      - !Ref rGreGatewayRole
+
+  rCloudWatchLogsAgentGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/${pSystem}/${pApp}/ec2/${pEnvPurpose}/${AWS::StackName}/'
+      RetentionInDays: 30
+  rTgwConnectAttachment:
+    Type: AWS::EC2::TransitGatewayConnect
+    Properties:
+      Options:
+        Protocol: gre
+      Tags:
+      - Key: Name
+        Value: TgwConnect
+      TransportTransitGatewayAttachmentId: !Ref pTgwAttachmentId
+  rVpcAssocConnect:
+    Type: AWS::EC2::TransitGatewayRouteTableAssociation
+    Properties:
+      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
+      TransitGatewayRouteTableId: !Ref pTgwRouteTableId
+  rVpcPropagationConnect:
+    Type: AWS::EC2::TransitGatewayRouteTablePropagation
+    Properties:
+      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
+      TransitGatewayRouteTableId: !Ref pTgwRouteTableId
+  rTgwConnectPeerA:
+    Type: Custom::TgwConnectPeer
+    Properties:
+      ServiceToken: !GetAtt rTgwConnectPeerFunction.Arn
+      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
+      TransitGatewayAddress: !Sub
+      - ${Prefix}.1
+      - Prefix: !Join
+        - '.'
+        - - !Select [ 0, !Split [ ".", !Ref pTgwCidr ] ]
+          - !Select [ 1, !Split [ ".", !Ref pTgwCidr ] ]
+          - !Select [ 2, !Split [ ".", !Ref pTgwCidr ] ]
+      PeerAddress: !GetAtt rGreGateway1.PrivateIp
+      PeerAsn: !Ref pGw1ASN
+      InsideCidrBlocks: !Ref pGreCidr1
+
+  rTgwConnectPeerB:
+    Type: Custom::TgwConnectPeer
+    Properties:
+      ServiceToken: !GetAtt rTgwConnectPeerFunction.Arn
+      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
+      TransitGatewayAddress: !Sub
+      - ${Prefix}.2
+      - Prefix: !Join
+        - '.'
+        - - !Select [ 0, !Split [ ".", !Ref pTgwCidr ] ]
+          - !Select [ 1, !Split [ ".", !Ref pTgwCidr ] ]
+          - !Select [ 2, !Split [ ".", !Ref pTgwCidr ] ]
+      PeerAddress: !GetAtt rGreGateway2.PrivateIp
+      PeerAsn: !Ref pGw2ASN
+      InsideCidrBlocks: !Ref pGreCidr2
+
+  rTgwConnectPeerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      InlineCode: |
+        import re
+        import json
+        import time
+
+        import boto3
+        import cfnresponse
+
+
+        def lambda_handler(event, context):
+            print(boto3.__version__)
+            print('REQUEST RECEIVED:\n')
+            print(json.dumps(event))
+            response_data = {}
+            try:
+                ec2 = boto3.client('ec2')
+                properties = event['ResourceProperties']
+                if event['RequestType'] == 'Create':
+                    tgw_connect_peer = ec2.create_transit_gateway_connect_peer(
+                        TransitGatewayAttachmentId=properties['TransitGatewayAttachmentId'],
+                        TransitGatewayAddress=properties['TransitGatewayAddress'],
+                        PeerAddress=properties['PeerAddress'],
+                        BgpOptions={
+                            'PeerAsn': int(properties['PeerAsn'])
+                        },
+                        InsideCidrBlocks=[
+                            properties['InsideCidrBlocks'],
+                        ]
+                    )['TransitGatewayConnectPeer']
+                    peer_id = tgw_connect_peer['TransitGatewayConnectPeerId']
+                    __wait_for_status(peer_id, 'available', ec2)
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, peer_id)
+                    return
+                if event['RequestType'] == 'Delete':
+                    if re.match("tgw-connect-peer-[a-zA-Z0-9]+", event['PhysicalResourceId']):
+                        ec2.delete_transit_gateway_connect_peer(
+                            TransitGatewayConnectPeerId=event['PhysicalResourceId']
+                        )
+                        __wait_for_status(event['PhysicalResourceId'], 'deleted', ec2)
+                        cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, event['PhysicalResourceId'])
+                        return
+                    else:
+                        cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, event['PhysicalResourceId'])
+                        return
+                if event['RequestType'] == 'Read':
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, event['PhysicalResourceId'])
+                    return
+                if event['RequestType'] == 'Update':
+                    if re.match("tgw-connect-peer-[a-zA-Z0-9]+", event['PhysicalResourceId']):
+                        ec2.delete_transit_gateway_connect_peer(
+                            TransitGatewayConnectPeerId=event['PhysicalResourceId']
+                        )
+                        __wait_for_status(event['PhysicalResourceId'], 'deleted', ec2)
+                    tgw_connect_peer = ec2.create_transit_gateway_connect_peer(
+                        TransitGatewayAttachmentId=properties['TransitGatewayAttachmentId'],
+                        TransitGatewayAddress=properties['TransitGatewayAddress'],
+                        PeerAddress=properties['PeerAddress'],
+                        BgpOptions={
+                            'PeerAsn': int(properties['PeerAsn'])
+                        },
+                        InsideCidrBlocks=[
+                            properties['InsideCidrBlocks'],
+                        ]
+                    )['TransitGatewayConnectPeer']
+                    peer_id = tgw_connect_peer['TransitGatewayConnectPeerId']
+                    __wait_for_status(peer_id, 'available', ec2)
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data, peer_id)
+                    return
+            except Exception as e:
+                response_data = {'error': str(e)}
+                cfnresponse.send(event, context, cfnresponse.FAILED, response_data, False, str(e))
+                return
+
+
+        def __wait_for_status(peer_id, status, ec2_client):
+            while True:
+                state = ec2_client.describe_transit_gateway_connect_peers(
+                    TransitGatewayConnectPeerIds=[peer_id]
+                )['TransitGatewayConnectPeers'][0]['State']
+                if state == status:
+                    break
+                else:
+                    time.sleep(10)
+
+      Handler: index.lambda_handler
+      Runtime: python3.8
+      Timeout: 600
+      Policies:
+      - Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Action:
+          - ec2:CreateTransitGatewayConnectPeer
+          - ec2:DeleteTransitGatewayConnectPeer
+          - ec2:List*
+          - ec2:Get*
+          - ec2:Describe*
+          Resource: '*'
+
+Outputs:
+  Appliance1PublicIp:
+    Value: !GetAtt rGreGateway1.PublicIp
+  Appliance2PublicIp:
+    Value: !GetAtt rGreGateway2.PublicIp
