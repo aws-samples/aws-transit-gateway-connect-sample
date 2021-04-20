@@ -17,7 +17,7 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 
 ## Deployment
 1. (Optional) Deploy [tgw_vpc_basics.yaml](./pre-requisites/tgw_vpc_basics.yaml) for VPC and Transit Gateway setup
-2. Manually attach a CIDR block to Transit Gateway (here: `10.10.0.0/24`)
+2. Important: Manually attach a CIDR block to Transit Gateway (here: `10.10.0.0/24`)
 3. Deploy [gre_setup.yaml](gre_setup.yaml), important parameters are the transport TGW attachment id, route table id and VPC information
 
 ## Deployment Consumer VPCs
