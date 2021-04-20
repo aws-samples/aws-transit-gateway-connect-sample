@@ -10,6 +10,7 @@ For more details, checkout the [Documentation](https://docs.aws.amazon.com/vpc/l
 
 Example ip ranges see architecture diagram and pre-requisites folder in this repository
 
+* Pick a region from the [Documentation](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-connect.html#tgw-connect-requirements)
 * Transit Gateway setup with unused CIDR attached
 * VPC with two public subnets
 * VPC attached to Transit Gateway
