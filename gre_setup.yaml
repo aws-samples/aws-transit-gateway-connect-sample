@@ -51,6 +51,7 @@ Metadata:
       - pSubnetIdA
       - pSubnetIdB
       - pVpcCidr
+      - pVpcProvidedDns
     - Label:
         default: 'Transit Gateway Connect Configuration'
       Parameters:
@@ -113,7 +114,12 @@ Parameters:
     Description: VPC CIDR Block
     Type: String
     AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
-    Default: 10.192.10.0/16
+    Default: 10.192.0.0/16
+  pVpcProvidedDns:
+    Description: VPC Provided DNS IP (aka .2)
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$
+    Default: 10.192.0.2
   pGreCidr1:
     Description: GRE inside CIDR Block Gateway 1
     Type: String
@@ -214,7 +220,8 @@ Resources:
           - 02-restart-cloudwatch-agent
           - 03-install-epel
           - 04-config-gre-gateway-config
-          - 05-config-bgp-commands
+          - 05-config-static-dns-route
+          - 06-config-bgp-commands
         01-config-cloudwatch-agent:
           files:
             /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json:
@@ -428,7 +435,15 @@ Resources:
               mode: '000600'
               owner: root
               group: root
-        05-config-bgp-commands:
+        05-config-static-dns-route:
+          commands:
+            01-add-static-route:
+              command: >-
+                source /etc/profile.d/gre_gateway.sh &&
+                echo "${VPC_PROVIDED_DNS} via 0.0.0.0 dev eth0" >> /etc/sysconfig/network-scripts/route-eth0
+            02-restart-network-service:
+              command: systemctl restart network.service
+        06-config-bgp-commands:
           commands:
             00-sed-instance-specific-settings:
               command: >-
@@ -506,6 +521,7 @@ Resources:
           echo 'GRE_GW_PEER_IP="${GreGwPeerIp}"' >> /etc/profile.d/gre_gateway.sh
           echo 'GRE_PEER_IP_1="${GrePeerIp1}"' >> /etc/profile.d/gre_gateway.sh
           echo 'GRE_PEER_IP_2="${GrePeerIp2}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'VPC_PROVIDED_DNS="${pVpcProvidedDns}"' >> /etc/profile.d/gre_gateway.sh
 
           source /etc/profile.d/gre_gateway.sh
           echo $TEST_ECHO
@@ -578,6 +594,7 @@ Resources:
           echo 'GRE_GW_PEER_IP="${GreGwPeerIp}"' >> /etc/profile.d/gre_gateway.sh
           echo 'GRE_PEER_IP_1="${GrePeerIp1}"' >> /etc/profile.d/gre_gateway.sh
           echo 'GRE_PEER_IP_2="${GrePeerIp2}"' >> /etc/profile.d/gre_gateway.sh
+          echo 'VPC_PROVIDED_DNS="${pVpcProvidedDns}"' >> /etc/profile.d/gre_gateway.sh
 
           source /etc/profile.d/gre_gateway.sh
           echo $TEST_ECHO
