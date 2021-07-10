@@ -113,7 +113,7 @@ Parameters:
     Description: VPC CIDR Block
     Type: String
     AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
-    Default: 10.192.10.0/16
+    Default: 10.192.0.0/16
   pGreCidr1:
     Description: GRE inside CIDR Block Gateway 1
     Type: String
@@ -403,9 +403,14 @@ Resources:
                 router bgp {GRE_GW_ASN}
                  network 0.0.0.0 mask 0.0.0.0
                  neighbor {GRE_PEER_IP_1} remote-as ${pTgwASN}
+                 neighbor {GRE_PEER_IP_1} prefix-list main in
                  neighbor {GRE_PEER_IP_1} ebgp-multihop 2
                  neighbor {GRE_PEER_IP_2} remote-as ${pTgwASN}
+                 neighbor {GRE_PEER_IP_2} prefix-list main in
                  neighbor {GRE_PEER_IP_2} ebgp-multihop 2
+
+                 ip prefix-list main seq 5 deny ${pVpcCidr}
+                 ip prefix-list main seq 10 permit any
                 !
                 line vty
               mode: '000600'
