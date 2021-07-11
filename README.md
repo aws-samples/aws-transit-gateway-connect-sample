@@ -51,6 +51,11 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 4. Display BGP session status - `show ip bgp summary`
 5. Display routes being advertised and applied to kernel route table - `show ip route`
 
+## Future Work
+
+* Add switch to demonstrate iBGP or eBGP within same template
+* Add scenario with multiple TGW connect attachments in order to advertise different networks for different TGW route tables
+
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
