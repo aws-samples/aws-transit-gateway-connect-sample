@@ -32,7 +32,7 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 
 ## Data Points
 * Dual redundant setup, two SDWAN instances with two GRE tunnels each
-* Full appliance instance failover takes ~30s
+* Full appliance instance failover takes `~30s`
 
 ## Limitations
 * Not all regions support TGW Connect (details see AWS documentation: [TGW Connect](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-connect.html))
@@ -42,6 +42,14 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 
 * **While code samples in this repository has been tested and believe it works well, as always, be sure to test it in your environment before using it in production!**
 * **The sample SDWAN appliances are just break-outs to the public internet in this sample setup**
+
+## How to debug BGP sessions on SDWAN appliances
+
+1. Login to the EC2 instances via Session Manager
+2. Display actually applied routes to the kernel's table - `ip route`
+3. Open vty shell tool - `sudo vtysh`
+4. Display BGP session status - `show ip bgp summary`
+5. Display routes being advertised and applied to kernel route table - `show ip route`
 
 ## Security
 
