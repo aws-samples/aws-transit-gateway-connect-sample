@@ -31,7 +31,7 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 ![Architecture Diagram](docs/tgw-connect.png)
 
 ## Data Points
-* High Available setup, two SDWAN instances with BGP peers each
+* High Available setup, two SDWAN instances with two BGP peers each
 * Full appliance instance failover takes `~30s`
 
 ## Limitations
