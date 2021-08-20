@@ -46,10 +46,11 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 ## How to debug BGP sessions on SDWAN appliances
 
 1. Login to the EC2 instances via Session Manager
-2. Display actually applied routes to the kernel's table - `ip route`
-3. Open vty shell tool - `sudo vtysh`
-4. Display BGP session status - `show ip bgp summary`
-5. Display routes being advertised and applied to kernel route table - `show ip route`
+2. Ping the BGP peer IP address of Transit Gateway sourcing from the virtual appliance’s BGP peer IP address within the GRE tunnel
+3. Display actually applied routes to the kernel's table - `ip route`
+4. Open vty shell tool - `sudo vtysh`
+5. Display BGP session status - `show ip bgp summary`
+6. Display routes being advertised and applied to kernel route table - `show ip route`
 
 ## Future Work
 
