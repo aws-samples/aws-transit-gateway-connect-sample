@@ -1,4 +1,4 @@
-# AWS Transit Gateway Connect Sample
+# AWS Transit Gateway Connect Demonstration
 
 ## Welcome
 
