@@ -42,6 +42,7 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 * **While code samples in this repository has been tested and believe it works well, as always, be sure to test it in your environment before using it in production!**
 * **The sample SDWAN appliances are just break-outs to the public internet in this sample setup**
 * **The architecture diagram** png is a drawio editable png export, feel free to use and adapt
+* Files within [/conf](/conf) folder are there to be at your hands, the actual deployed content is inlined for simplicity.
 
 ## How to debug BGP sessions on SDWAN appliances
 
