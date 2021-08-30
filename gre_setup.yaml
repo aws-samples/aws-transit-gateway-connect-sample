@@ -451,7 +451,7 @@ Resources:
             01-load-sysctl-changes:
               command: sysctl -p /etc/sysctl.conf
             02-enable-ip-forwarding:
-              command: >- 
+              command: >-
                 sysctl -w net.ipv4.ip_forward=1 && 
                 sysctl -w net.ipv4.conf.eth0.disable_xfrm=1 && 
                 sysctl -w net.ipv4.conf.eth0.disable_policy=1
@@ -469,15 +469,15 @@ Resources:
                 iptables -t nat -A POSTROUTING -o eth0 -j SNAT --to ${ipaddr} &&
                 iptables-save > /etc/sysconfig/iptables
             05-enable-start-ntpd:
-              command: >- 
+              command: >-
                 systemctl enable ntpd && 
                 systemctl start  ntpd
             06-enable-start-zebra:
-              command: >- 
+              command: >-
                 systemctl enable zebra && 
                 systemctl start  zebra
             07-enable-start-bgpd:
-              command: >- 
+              command: >-
                 systemctl enable bgpd && 
                 systemctl start  bgpd
             08-enable-start-iptables:
