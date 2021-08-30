@@ -54,6 +54,8 @@ Resources:
       DefaultRouteTablePropagation: disable
       DnsSupport: enable
       MulticastSupport: enable
+      TransitGatewayCidrBlocks:
+      - !Ref TgwCidr
       Tags:
       - Key: Name
         Value: GreTunnelTest

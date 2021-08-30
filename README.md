@@ -17,9 +17,8 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 * Public subnets route table entries with destination TGW CIDR pointing to TGW
 
 ## Deployment
-1. (Optional) Deploy [tgw_vpc_basics.yaml](./pre-requisites/tgw_vpc_basics.yaml) for VPC and Transit Gateway setup
-2. Important: Manually attach a CIDR block to Transit Gateway (here: `10.10.0.0/24`)
-3. Deploy [gre_setup.yaml](gre_setup.yaml), important parameters are the transport TGW attachment id, route table id and VPC information
+1. (Optional) Deploy [tgw_vpc_basics.yaml](./pre-requisites/tgw_vpc_basics.yaml) for VPC and Transit Gateway (including attached TGW CIDR block, here: `10.10.0.0/24`) setup
+2. Deploy [gre_setup.yaml](gre_setup.yaml), important parameters are the transport TGW attachment id, route table id and VPC information
 
 ## Deployment Consumer VPCs
 1. VPC needs to be attached to TGW
