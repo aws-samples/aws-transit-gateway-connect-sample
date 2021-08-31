@@ -16,7 +16,13 @@ Example ip ranges see architecture diagram and pre-requisites folder in this rep
 * VPC attached to Transit Gateway
 * Public subnets route table entries with destination TGW CIDR pointing to TGW
 
-## Deployment
+## Quickstart
+
+You can use the following link to deploy the full setup directly into your AWS account. Ensure you are logged into the AWS Console before following it.
+
+[Quickstart CloudFormation Link](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?templateURL=https:%2F%2Fs3.amazonaws.com%2Ff7o-quickstart%2Faws-transit-gateway-connect-sample%2Fgre_setup.yaml)
+
+## Manual Deployment
 1. (Optional) Deploy [tgw_vpc_basics.yaml](./pre-requisites/tgw_vpc_basics.yaml) for VPC and Transit Gateway (including attached TGW CIDR block, here: `10.10.0.0/24`) setup
 2. Deploy [gre_setup.yaml](gre_setup.yaml), important parameters are the transport TGW attachment id, route table id and VPC information
 
