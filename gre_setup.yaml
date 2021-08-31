@@ -687,12 +687,12 @@ Resources:
   rVpcAssocConnect:
     Type: AWS::EC2::TransitGatewayRouteTableAssociation
     Properties:
-      TransitGatewayAttachmentId: !GetAtt rVpcStack.Outputs.TgwAttachmentId
+      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
       TransitGatewayRouteTableId: !GetAtt rVpcStack.Outputs.TgwRouteTableId
   rVpcPropagationConnect:
     Type: AWS::EC2::TransitGatewayRouteTablePropagation
     Properties:
-      TransitGatewayAttachmentId: !GetAtt rVpcStack.Outputs.TgwAttachmentId
+      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
       TransitGatewayRouteTableId: !GetAtt rVpcStack.Outputs.TgwRouteTableId
   rTgwConnectPeerA:
     Type: Custom::TgwConnectPeer
