@@ -6,21 +6,22 @@ This repository demonstrates the usage of Transit Gateway (TGW) connect and acce
 
 For more details, checkout the [Documentation](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-connect.html) and our [Blog Article](https://aws.amazon.com/de/blogs/networking-and-content-delivery/simplify-sd-wan-connectivity-with-aws-transit-gateway-connect/).
 
-## Pre-requisites
-
-Example ip ranges see architecture diagram and pre-requisites folder in this repository
-
-* Pick a region from the [Documentation](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-connect.html#tgw-connect-requirements)
-* Transit Gateway setup with unused CIDR attached
-* VPC with two public subnets
-* VPC attached to Transit Gateway
-* Public subnets route table entries with destination TGW CIDR pointing to TGW
 
 ## Quickstart
 
 You can use the following link to deploy the full setup directly into your AWS account. Ensure you are logged into the AWS Console before following it.
 
 [Quickstart CloudFormation Link](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?templateURL=https:%2F%2Fs3.amazonaws.com%2Ff7o-quickstart%2Faws-transit-gateway-connect-sample%2Fgre_setup.yaml)
+
+## Pre-requisites
+
+Example ip ranges see architecture diagram and pre-requisites folder in this repository. The [tgw_vpc_basics.yaml](./pre-requisites/tgw_vpc_basics.yaml) template deployed the pre-requistites for you if not already exists.
+
+* Pick a region from the [Documentation](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-connect.html#tgw-connect-requirements)
+* Transit Gateway setup with unused CIDR attached
+* VPC with two public subnets
+* VPC attached to Transit Gateway
+* Public subnets route table entries with destination TGW CIDR pointing to TGW
 
 ## Manual Deployment
 1. (Optional) Deploy [tgw_vpc_basics.yaml](./pre-requisites/tgw_vpc_basics.yaml) for VPC and Transit Gateway (including attached TGW CIDR block, here: `10.10.0.0/24`) setup
