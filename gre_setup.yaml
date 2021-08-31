@@ -106,9 +106,6 @@ Parameters:
   pGwKeypair:
     Type: String
     Default: ""
-  pVpcId:
-    Description: VPC ID
-    Type: AWS::EC2::VPC::Id
   pVpcCidr:
     Description: VPC CIDR Block
     Type: String
@@ -129,16 +126,6 @@ Parameters:
     Type: String
     AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$
     Default: 10.10.0.0/24
-  pTgwRouteTableId:
-    Type: String
-  pTgwAttachmentId:
-    Type: String
-  pSubnetIdA:
-    Description: Subnet ID for GRE Gateway 1
-    Type: AWS::EC2::Subnet::Id
-  pSubnetIdB:
-    Description: Subnet ID for GRE Gateway 2
-    Type: AWS::EC2::Subnet::Id
   pInstanceType:
     Description: EC2 Instance Type
     Type: String
@@ -165,11 +152,16 @@ Parameters:
 Conditions:
   AttachKeypair: !Not [!Equals [!Ref pGwKeypair, ""]]
 Resources:
+  rVpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties: 
+      TemplateURL: https://f7o-quickstart.s3.eu-west-1.amazonaws.com/aws-transit-gateway-connect-sample/tgw_vpc_basics.yaml
+      TimeoutInMinutes: 60
   rInstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: !Sub '${pSystem}-${pApp}-ec2-${pEnvPurpose}-${AWS::StackName}'
-      VpcId: !Ref pVpcId
+      VpcId: !GetAtt rVpcStack.Outputs.VPC
       GroupDescription: Allow traffic from other VPN gateway and all locally sourced traffic
       SecurityGroupIngress:
       - IpProtocol: '-1'
@@ -496,7 +488,7 @@ Resources:
             [ rLaunchTemplate, LatestVersionNumber ]
       NetworkInterfaces:
       - DeviceIndex: '0'
-        SubnetId: !Ref pSubnetIdA
+        SubnetId: !GetAtt rVpcStack.Outputs.PublicSubnet1
       SourceDestCheck: true
       UserData:
         Fn::Base64: !Sub
@@ -568,7 +560,7 @@ Resources:
             [ rLaunchTemplate, LatestVersionNumber ]
       NetworkInterfaces:
       - DeviceIndex: '0'
-        SubnetId: !Ref pSubnetIdB
+        SubnetId: !GetAtt rVpcStack.Outputs.PublicSubnet2
       SourceDestCheck: true
       UserData:
         Fn::Base64: !Sub
@@ -691,17 +683,17 @@ Resources:
       Tags:
       - Key: Name
         Value: TgwConnect
-      TransportTransitGatewayAttachmentId: !Ref pTgwAttachmentId
+      TransportTransitGatewayAttachmentId: !GetAtt rVpcStack.Outputs.TgwAttachmentId
   rVpcAssocConnect:
     Type: AWS::EC2::TransitGatewayRouteTableAssociation
     Properties:
-      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
-      TransitGatewayRouteTableId: !Ref pTgwRouteTableId
+      TransitGatewayAttachmentId: !GetAtt rVpcStack.Outputs.TgwAttachmentId
+      TransitGatewayRouteTableId: !GetAtt rVpcStack.Outputs.TgwRouteTableId
   rVpcPropagationConnect:
     Type: AWS::EC2::TransitGatewayRouteTablePropagation
     Properties:
-      TransitGatewayAttachmentId: !Ref rTgwConnectAttachment
-      TransitGatewayRouteTableId: !Ref pTgwRouteTableId
+      TransitGatewayAttachmentId: !GetAtt rVpcStack.Outputs.TgwAttachmentId
+      TransitGatewayRouteTableId: !GetAtt rVpcStack.Outputs.TgwRouteTableId
   rTgwConnectPeerA:
     Type: Custom::TgwConnectPeer
     Properties:
